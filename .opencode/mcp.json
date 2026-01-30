@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "crypto": {
+      "command": "python",
+      "args": ["D:/Crypto/.opencode/skills/crypto/scripts/crypto_mcp_server.py"],
+      "env": {
+        "PYTHONIOENCODING": "utf-8"
+      }
+    }
+  }
+}
