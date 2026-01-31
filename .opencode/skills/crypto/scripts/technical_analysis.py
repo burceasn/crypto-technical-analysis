@@ -122,7 +122,7 @@ class TechnicalAnalysis:
             use_proxy: 是否使用代理
             
         Returns:
-            包含资金费率的DataFrame，失败返回None
+            包含以下列的 DataFrame: ['datetime', 'fundingRate', 'realizedRate', 'type'], 失败返回None
         """
         return get_okx_funding_rate(inst_id, limit=limit, use_proxy=use_proxy)
     
@@ -138,7 +138,7 @@ class TechnicalAnalysis:
             use_proxy: 是否使用代理
             
         Returns:
-            包含持仓量数据的DataFrame，失败返回None
+            包含包含以下列的 DataFrame: ['datetime', 'oiCcy', 'oiUsd', 'type']，失败返回None
         """
         return get_okx_open_interest(inst_id, period=period, limit=limit, use_proxy=use_proxy)
     

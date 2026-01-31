@@ -65,7 +65,7 @@ Call via `skill_mcp(mcp_name="crypto", tool_name="...", arguments={...})`
 | `inst_id` | string | Perpetual contract, e.g., "BTC-USDT-SWAP" |
 | `limit` | integer | Data count (max 100) |
 
-**Returns**: Row 0 = current prediction, subsequent rows = settled history
+**Returns**: DataFrame with columns: `[datetime, fundingRate, realizedRate, type]`
 
 ### 3. get_open_interest - Open Interest
 
@@ -75,7 +75,7 @@ Call via `skill_mcp(mcp_name="crypto", tool_name="...", arguments={...})`
 | `period` | string | Granularity: 5m, 1H, 1D |
 | `limit` | integer | Data count (max 100) |
 
-**Returns**: Row 0 = realtime data, subsequent rows = historical snapshots
+**Returns**: DataFrame with columns: `[datetime, oiCcy, oiUsd, type]`
 
 ### 4. get_long_short_ratio - Long/Short Ratio
 
@@ -352,7 +352,7 @@ CCY = 'BTC'                 # Currency code for long/short ratio
 # Funding rate
 funding = TechnicalAnalysis.fetch_funding_rate(INST_ID, limit=10)
 if funding is not None:
-    print(f'Current Funding Rate: {funding.iloc[0][\"fundingRate\"]:.6f}')
+    print(f'Current Funding Rate: {funding.iloc[0]["fundingRate"]:.6f} at {funding.iloc[0]["datetime"]}')
 
 # Open interest
 oi = TechnicalAnalysis.fetch_open_interest(INST_ID, period='1H', limit=10)
