@@ -106,7 +106,7 @@ flowchart TD
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/crypto.git
+git clone https://github.com/burceasn/crypto-technical-analysis.git
 cd crypto
 
 # Install dependencies
@@ -292,6 +292,18 @@ This project is for educational and research purposes only. **Not financial advi
 The author lost money ignoring this agent's signals. You might too. Trade at your own risk.
 
 Remember: The market can stay irrational longer than you can stay solvent.
+
+---
+
+## Acknowledgments
+
+This project would not have been possible without these incredible tools:
+
+- **[Oh My OpenCode](https://github.com/code-yeongyu/oh-my-opencode.git)** - The powerful AI agent framework that made this entire workflow possible. Without this tool, I couldn't have built and iterated on this analysis system so rapidly.
+
+- **[OpenCode](https://github.com/anomalyco/opencode.git)** - The foundation that powers the AI coding experience. This project provided the core infrastructure that made everything work seamlessly.
+
+Seriously, if you're doing any kind of AI-assisted development, check these projects out. They're the real MVPs here.
 
 ---
 
