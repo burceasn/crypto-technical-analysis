@@ -10,6 +10,8 @@ Crypto Data API 模块
     - get_okx_open_interest: 获取未平仓合约量 (含美元价值)
     - get_long_short_ratio: 获取精英交易员多空持仓人数比
     - get_okx_liquidation: 获取爆仓订单数据
+    - get_top_trader_long_short_position_ratio: 获取精英交易员合约多空持仓仓位比
+    - get_option_open_interest_volume_ratio: 获取看涨/看跌期权合约持仓总量比/交易总量比
 
 使用示例:
     from crypto_data import get_okx_candles, get_okx_funding_rate
@@ -158,65 +160,68 @@ def get_okx_candles(
 
 
 def get_fear_greed_index(
-    api_key: str,
-    days: int = 7
+    days: int = 7,
+    use_proxy: bool = True
 ) -> Optional[pd.DataFrame]:
     """
-    获取 CoinMarketCap 的 Fear and Greed Index 历史数据。
+    获取 alternative.me 的 Fear and Greed Index 历史数据。
+
+    该 API 免费开放，无需 API Key。
 
     Args:
-        api_key: CoinMarketCap Pro API Key
         days: 获取过去多少天的数据 (默认 7 天)
+        use_proxy: 是否使用代理
 
     Returns:
         包含以下列的 DataFrame:
             - date: 日期 (YYYY-MM-DD 格式)
             - value: 指数值 (0-100)
-            - value_classification: 分类描述 (如 'Fear', 'Greed' 等)
+            - value_classification: 分类描述 (如 'Extreme Fear', 'Fear', 'Greed', 'Extreme Greed' 等)
         如果请求失败返回 None
 
     Example:
-        >>> df = get_fear_greed_index("your-api-key", days=30)
+        >>> df = get_fear_greed_index(days=30)
         >>> print(df.head())
     """
-    url = 'https://pro-api.coinmarketcap.com/v3/fear-and-greed/historical'
-    headers = {
-        'Accepts': 'application/json',
-        'X-CMC_PRO_API_KEY': api_key,
+    url = 'https://api.alternative.me/fng/'
+    params = {
+        'limit': days
     }
-    parameters = {
-        'limit': str(days)
-    }
+    proxies = DEFAULT_PROXY if use_proxy else None
 
     try:
         print(f"正在获取恐惧贪婪指数 (最近 {days} 天)...")
-        response = requests.get(url, headers=headers, params=parameters)
+        response = requests.get(
+            url,
+            params=params,
+            proxies=proxies,
+            timeout=DEFAULT_TIMEOUT
+        )
         response.raise_for_status()
         data = response.json()
 
+        # 检查 API 错误
+        if data.get('metadata', {}).get('error'):
+            print(f"API 报错: {data['metadata']['error']}")
+            return None
+
         if 'data' in data and data['data']:
             df = pd.DataFrame(data['data'])
-            # 时间戳处理 (CMC 返回的是 Unix 秒级时间戳)
+            # 时间戳处理 (alternative.me 返回的是 Unix 秒级时间戳，字符串格式)
             df['timestamp'] = pd.to_numeric(df['timestamp'], errors='coerce')
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s', utc=True)
             df['date'] = df['timestamp'].dt.strftime('%Y-%m-%d')  # pyright: ignore[reportAttributeAccessIssue]
+            # value 是字符串，需要转换
+            df['value'] = pd.to_numeric(df['value'], errors='coerce')
             # 只保留需要的列
-            columns_to_keep = ['date', 'value', 'value_classification']
-            final_cols = [col for col in columns_to_keep if col in df.columns]
-            return df[final_cols]
+            df = df[['date', 'value', 'value_classification']]
+            return df
         else:
             print(f"API 返回数据为空或结构异常: {data}")
             return None
 
-    except requests.exceptions.HTTPError as err:
-        print(f"HTTP 请求错误: {err}")
-        try:
-            print(f"API 错误详情: {response.json().get('status', {}).get('error_message')}")  # pyright: ignore[reportPossiblyUnboundVariable]
-        except:
-            pass
-        return None
     except Exception as e:
-        print(f"处理数据时发生错误: {e}")
+        _handle_request_error(e)
         return None
 
 
@@ -622,6 +627,168 @@ def get_okx_liquidation(
         return None
 
 
+def get_top_trader_long_short_position_ratio(
+    inst_id: str,
+    period: str = '5m',
+    begin: Optional[str] = None,
+    end: Optional[str] = None,
+    limit: int = 100,
+    use_proxy: bool = True
+) -> Optional[pd.DataFrame]:
+    """
+    获取 OKX 精英交易员合约多空持仓仓位比。
+
+    精英交易员指持仓价值前5%的用户。
+    数据时间范围最早至2024年3月22日。
+
+    Args:
+        inst_id: 产品ID，如 'BTC-USDT-SWAP', 'ETH-USDT-SWAP' (仅适用于交割/永续)
+        period: 时间粒度，默认值 '5m'
+                可选值:
+                - 短周期: '5m', '15m', '30m', '1H', '2H', '4H'
+                - UTC+8开盘价K线: '6H', '12H', '1D', '2D', '3D', '5D', '1W', '1M', '3M'
+                - UTC+0开盘价K线: '6Hutc', '12Hutc', '1Dutc', '2Dutc', '3Dutc', '5Dutc', '1Wutc', '1Mutc', '3Mutc'
+        begin: 筛选的开始时间戳，Unix 时间戳毫秒格式，如 '1597026383085'
+        end: 筛选的结束时间戳，Unix 时间戳毫秒格式，如 '1597027383085'
+        limit: 分页返回的结果集数量，最大为100，默认返回100条
+        use_proxy: 是否使用代理
+
+    Returns:
+        包含以下列的 DataFrame:
+            - datetime: 时间
+            - longShortPosRatio: 多空仓位占总持仓比值
+        按时间降序排列，最新的在最上面。
+        如果请求失败返回 None
+
+    Example:
+        >>> df = get_top_trader_long_short_position_ratio("BTC-USDT-SWAP", period="1H", limit=24)
+        >>> print(df.head())
+    """
+    url = "https://www.okx.com/api/v5/rubik/stat/contracts/long-short-position-ratio-contract-top-trader"
+    proxies = DEFAULT_PROXY if use_proxy else None
+
+    params = {
+        "instId": inst_id,
+        "period": period,
+        "limit": limit
+    }
+
+    # 添加可选参数
+    if begin:
+        params['begin'] = begin
+    if end:
+        params['end'] = end
+
+    try:
+        print(f"正在获取 {inst_id} 精英交易员多空持仓仓位比 (周期: {period})...")
+        response = requests.get(
+            url,
+            params=params,
+            proxies=proxies,
+            timeout=DEFAULT_TIMEOUT
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if data['code'] != '0':
+            print(f"API 报错: {data['msg']}")
+            return None
+
+        records = data.get('data', [])
+        if not records:
+            print(f"提示：[{inst_id}] 没有精英交易员多空持仓仓位比数据。")
+            return None
+
+        # 创建 DataFrame (返回格式: [ts, longShortPosRatio])
+        df = pd.DataFrame(records, columns=['ts', 'longShortPosRatio'])
+
+        # 数据清洗
+        df['datetime'] = pd.to_datetime(pd.to_numeric(df['ts']), unit='ms')
+        df['longShortPosRatio'] = pd.to_numeric(df['longShortPosRatio'])
+        df = df[['datetime', 'longShortPosRatio']]
+
+        # 按时间降序排列
+        df = df.sort_values('datetime', ascending=False).reset_index(drop=True)
+        return df
+
+    except Exception as e:
+        _handle_request_error(e)
+        return None
+
+
+def get_option_open_interest_volume_ratio(
+    ccy: str,
+    period: str = '8H',
+    use_proxy: bool = True
+) -> Optional[pd.DataFrame]:
+    """
+    获取 OKX 看涨/看跌期权合约的持仓总量比和交易总量比。
+
+    每个粒度最多只能查询72条数据。
+
+    Args:
+        ccy: 币种，如 'BTC', 'ETH'
+        period: 时间粒度，默认值 '8H'，支持 '8H' 或 '1D'
+        use_proxy: 是否使用代理
+
+    Returns:
+        包含以下列的 DataFrame:
+            - datetime: 数据产生时间
+            - oiRatio: 看涨/看跌 持仓总量比
+            - volRatio: 看涨/看跌 交易总量比
+        按时间降序排列，最新的在最上面。
+        如果请求失败返回 None
+
+    Example:
+        >>> df = get_option_open_interest_volume_ratio("BTC", period="1D")
+        >>> print(df.head())
+    """
+    url = "https://www.okx.com/api/v5/rubik/stat/option/open-interest-volume-ratio"
+    proxies = DEFAULT_PROXY if use_proxy else None
+
+    params = {
+        "ccy": ccy,
+        "period": period
+    }
+
+    try:
+        print(f"正在获取 {ccy} 期权看涨/看跌持仓量和交易量比 (周期: {period})...")
+        response = requests.get(
+            url,
+            params=params,
+            proxies=proxies,
+            timeout=DEFAULT_TIMEOUT
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if data['code'] != '0':
+            print(f"API 报错: {data['msg']}")
+            return None
+
+        records = data.get('data', [])
+        if not records:
+            print(f"提示：[{ccy}] 没有期权持仓量/交易量比数据。")
+            return None
+
+        # 创建 DataFrame (返回格式: [ts, oiRatio, volRatio])
+        df = pd.DataFrame(records, columns=['ts', 'oiRatio', 'volRatio'])
+
+        # 数据清洗
+        df['datetime'] = pd.to_datetime(pd.to_numeric(df['ts']), unit='ms')
+        df['oiRatio'] = pd.to_numeric(df['oiRatio'])
+        df['volRatio'] = pd.to_numeric(df['volRatio'])
+        df = df[['datetime', 'oiRatio', 'volRatio']]
+
+        # 按时间降序排列
+        df = df.sort_values('datetime', ascending=False).reset_index(drop=True)
+        return df
+
+    except Exception as e:
+        _handle_request_error(e)
+        return None
+
+
 # ==============================================================================
 # 便捷导出函数
 # ==============================================================================
@@ -681,6 +848,18 @@ if __name__ == "__main__":
     df_liq = get_okx_liquidation("BTC-USDT-SWAP", limit=10)
     if df_liq is not None:
         print(df_liq)
+
+    # 测试 6: 精英交易员多空持仓仓位比
+    print("\n[测试6] 获取 BTC-USDT-SWAP 精英交易员多空持仓仓位比...")
+    df_top_ls = get_top_trader_long_short_position_ratio("BTC-USDT-SWAP", period="1H", limit=5)
+    if df_top_ls is not None:
+        print(df_top_ls)
+
+    # 测试 7: 期权看涨/看跌持仓量交易量比
+    print("\n[测试7] 获取 BTC 期权看涨/看跌持仓量交易量比...")
+    df_opt = get_option_open_interest_volume_ratio("BTC", period="8H")
+    if df_opt is not None:
+        print(df_opt)
 
     print("\n" + "=" * 60)
     print("测试完成")

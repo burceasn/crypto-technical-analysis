@@ -21,7 +21,10 @@ OKX 交易所实时加密货币市场数据访问能力以及对获得是实时�
 - K-line / Candlestick data
 - Funding rate history
 - Open interest snapshots
-- Long/Short ratio data
+- Long/Short ratio data (account ratio)
+- Top trader position ratio (position ratio of top 5% traders)
+- Option call/put OI and volume ratio
+- Fear and Greed Index
 - Liquidation records
 
 ### This Skill does NOT HANDLE
@@ -95,6 +98,58 @@ Call via `skill_mcp(mcp_name="crypto", tool_name="...", arguments={...})`
 
 **Returns**: Columns: `datetime`, `side` (sell=long liquidated, buy=short liquidated), `bkPx`, `sz`
 
+### 6. get_top_trader_position_ratio - Top Trader Position Ratio
+
+获取精英交易员合约多空持仓仓位比。精英交易员指持仓价值前5%的用户。
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `inst_id` | string | Perpetual contract, e.g., "BTC-USDT-SWAP" (交割/永续合约) |
+| `period` | string | Granularity: 5m, 15m, 30m, 1H, 2H, 4H, 6H, 12H, 1D |
+| `limit` | integer | Data count (max 100) |
+
+**Returns**: DataFrame with columns: `datetime`, `longShortPosRatio`
+
+**Interpretation**:
+- `longShortPosRatio > 1`: Top traders hold more long positions
+- `longShortPosRatio < 1`: Top traders hold more short positions
+- `longShortPosRatio = 1`: Equal long/short positions
+
+### 7. get_option_oi_volume_ratio - Option Call/Put Ratio
+
+获取看涨/看跌期权合约的持仓总量比和交易总量比。
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `ccy` | string | Currency, e.g., "BTC", "ETH" |
+| `period` | string | Granularity: 8H or 1D |
+
+**Returns**: DataFrame with columns: `datetime`, `oiRatio`, `volRatio`
+
+**Interpretation**:
+- `oiRatio`: Call/Put open interest ratio (看涨/看跌持仓量比)
+  - `> 1`: More call options held (bullish sentiment)
+  - `< 1`: More put options held (bearish sentiment)
+- `volRatio`: Call/Put volume ratio (看涨/看跌交易量比)
+  - `> 1`: More call options traded (bullish activity)
+  - `< 1`: More put options traded (bearish activity)
+
+### 8. get_fear_greed_index - Fear and Greed Index
+
+获取 alternative.me 的恐惧贪婪指数。免费开放，无需 API Key。
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `days` | integer | Days of history (default: 7) |
+
+**Returns**: DataFrame with columns: `date`, `value`, `value_classification`
+
+**Interpretation**:
+- `0-24`: Extreme Fear (极度恐惧) - Potential buying opportunity
+- `25-49`: Fear (恐惧)
+- `50-74`: Greed (贪婪)
+- `75-100`: Extreme Greed (极度贪婪) - Potential selling signal
+
 ---
 
 ## Supported Trading Pairs
@@ -132,6 +187,27 @@ skill_mcp(
   mcp_name="crypto",
   tool_name="get_liquidation",
   arguments={"inst_id": "BTC-USDT-SWAP", "state": "filled", "limit": 100}
+)
+
+# Get top trader position ratio (精英交易员多空仓位比)
+skill_mcp(
+  mcp_name="crypto",
+  tool_name="get_top_trader_position_ratio",
+  arguments={"inst_id": "BTC-USDT-SWAP", "period": "1H", "limit": 24}
+)
+
+# Get option call/put ratio (期权看涨/看跌比)
+skill_mcp(
+  mcp_name="crypto",
+  tool_name="get_option_oi_volume_ratio",
+  arguments={"ccy": "BTC", "period": "8H"}
+)
+
+# Get fear and greed index (恐惧贪婪指数) - 无需 API Key
+skill_mcp(
+  mcp_name="crypto",
+  tool_name="get_fear_greed_index",
+  arguments={"days": 30}
 )
 ```
 
@@ -381,6 +457,9 @@ if ls is not None:
 | "资金费率", "funding" | Use fetch_funding_rate with SWAP contract |
 | "持仓量", "OI" | Use fetch_open_interest with SWAP contract |
 | "多空比" | Use fetch_long_short_ratio with CCY |
+| "精英持仓", "大户仓位" | Use get_top_trader_position_ratio with SWAP |
+| "期权比", "call/put" | Use get_option_oi_volume_ratio with CCY |
+| \"恐惧贪婪\", \"情绪指数\" | Use get_fear_greed_index (无需 API Key) |
 
 ---
 

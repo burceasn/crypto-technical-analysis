@@ -27,7 +27,10 @@ from crypto_data import (
     get_okx_funding_rate,
     get_okx_open_interest,
     get_long_short_ratio,
-    get_okx_liquidation
+    get_okx_liquidation,
+    get_top_trader_long_short_position_ratio,
+    get_option_open_interest_volume_ratio,
+    get_fear_greed_index
 )
 
 
@@ -177,6 +180,64 @@ def handle_tools_list(request_id: Any) -> dict:
                 },
                 "required": ["inst_id"]
             }
+        },
+        {
+            "name": "get_top_trader_position_ratio",
+            "description": "获取精英交易员合约多空持仓仓位比。精英交易员指持仓价值前5%的用户。用于判断大户持仓方向。",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "inst_id": {
+                        "type": "string",
+                        "description": "产品ID，如 'BTC-USDT-SWAP', 'ETH-USDT-SWAP' (仅适用于交割/永续)"
+                    },
+                    "period": {
+                        "type": "string",
+                        "description": "时间粒度: '5m', '15m', '30m', '1H', '2H', '4H', '6H', '12H', '1D'",
+                        "default": "5m"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "返回数据条数，最大 100",
+                        "default": 100
+                    }
+                },
+                "required": ["inst_id"]
+            }
+        },
+        {
+            "name": "get_option_oi_volume_ratio",
+            "description": "获取看涨/看跌期权合约的持仓总量比和交易总量比。用于分析期权市场情绪。oiRatio > 1 表示看涨期权持仓多于看跌。",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "ccy": {
+                        "type": "string",
+                        "description": "币种，如 'BTC', 'ETH'"
+                    },
+                    "period": {
+                        "type": "string",
+                        "description": "时间粒度: '8H' 或 '1D'",
+                        "default": "8H"
+                    }
+                },
+                "required": ["ccy"]
+            }
+        },
+        {
+            "name": "get_fear_greed_index",
+            "description": "获取 Fear and Greed Index (恐惧贪婪指数)。0-24: 极度恐惧, 25-49: 恐惧, 50-74: 贪婪, 75-100: 极度贪婪。",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "days": {
+                        "type": "integer",
+                        "description": "获取过去多少天的数据",
+                        "default": 7
+                    }
+                },
+                "required": []
+            }
         }
     ]
     
@@ -268,6 +329,47 @@ def handle_tool_call(request_id: Any, params: dict) -> dict:
                 content = json.dumps(result, indent=2)
             else:
                 content = "Error: Failed to fetch liquidation data"
+                
+        elif tool_name == "get_top_trader_position_ratio":
+            df = get_top_trader_long_short_position_ratio(
+                inst_id=arguments["inst_id"],
+                period=arguments.get("period", "5m"),
+                limit=arguments.get("limit", 100),
+                use_proxy=True
+            )
+            if df is not None:
+                result = df.to_dict(orient="records")
+                for row in result:
+                    row["datetime"] = str(row["datetime"])
+                content = json.dumps(result, indent=2)
+            else:
+                content = "Error: Failed to fetch top trader position ratio data"
+                
+        elif tool_name == "get_option_oi_volume_ratio":
+            df = get_option_open_interest_volume_ratio(
+                ccy=arguments["ccy"],
+                period=arguments.get("period", "8H"),
+                use_proxy=True
+            )
+            if df is not None:
+                result = df.to_dict(orient="records")
+                for row in result:
+                    row["datetime"] = str(row["datetime"])
+                content = json.dumps(result, indent=2)
+            else:
+                content = "Error: Failed to fetch option OI/volume ratio data"
+                
+        elif tool_name == "get_fear_greed_index":
+            df = get_fear_greed_index(
+                days=arguments.get("days", 7),
+                use_proxy=True
+            )
+            if df is not None:
+                result = df.to_dict(orient="records")
+                content = json.dumps(result, indent=2)
+            else:
+                content = "Error: Failed to fetch fear and greed index data"
+                
         else:
             content = f"Error: Unknown tool '{tool_name}'"
             
