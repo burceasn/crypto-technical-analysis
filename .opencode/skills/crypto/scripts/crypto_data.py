@@ -90,7 +90,7 @@ def get_okx_candles(
     inst_id: str,
     bar: str = '1H',
     limit: int = 100,
-    use_proxy: bool = True
+    use_proxy: bool = False
 ) -> Optional[pd.DataFrame]:
     """
     获取 OKX 交易对的 K 线数据。
@@ -161,7 +161,7 @@ def get_okx_candles(
 
 def get_fear_greed_index(
     days: int = 7,
-    use_proxy: bool = True
+    use_proxy: bool = False
 ) -> Optional[pd.DataFrame]:
     """
     获取 alternative.me 的 Fear and Greed Index 历史数据。
@@ -228,7 +228,7 @@ def get_fear_greed_index(
 def get_okx_funding_rate(
     inst_id: str,
     limit: int = 100,
-    use_proxy: bool = True
+    use_proxy: bool = False
 ) -> Optional[pd.DataFrame]:
     """
     获取 OKX 永续合约的资金费率结构。
@@ -328,7 +328,7 @@ def get_okx_open_interest(
     inst_id: str,
     period: str = '1H',
     limit: int = 100,
-    use_proxy: bool = True
+    use_proxy: bool = False
 ) -> Optional[pd.DataFrame]:
     """
     获取 OKX 交易对的未平仓合约量 (Open Interest)，包含美元价值。
@@ -435,7 +435,7 @@ def get_long_short_ratio(
     ccy: str,
     period: str = '1H',
     limit: int = 100,
-    use_proxy: bool = True
+    use_proxy: bool = False
 ) -> Optional[pd.DataFrame]:
     """
     获取 OKX 精英交易员多空持仓人数比。
@@ -536,7 +536,7 @@ def get_okx_liquidation(
     inst_id: str,
     state: str = 'filled',
     limit: int = 100,
-    use_proxy: bool = True
+    use_proxy: bool = False
 ) -> Optional[pd.DataFrame]:
     """
     获取 OKX 永续合约的爆仓订单数据。
@@ -633,7 +633,7 @@ def get_top_trader_long_short_position_ratio(
     begin: Optional[str] = None,
     end: Optional[str] = None,
     limit: int = 100,
-    use_proxy: bool = True
+    use_proxy: bool = False
 ) -> Optional[pd.DataFrame]:
     """
     获取 OKX 精英交易员合约多空持仓仓位比。
@@ -719,7 +719,7 @@ def get_top_trader_long_short_position_ratio(
 def get_option_open_interest_volume_ratio(
     ccy: str,
     period: str = '8H',
-    use_proxy: bool = True
+    use_proxy: bool = False
 ) -> Optional[pd.DataFrame]:
     """
     获取 OKX 看涨/看跌期权合约的持仓总量比和交易总量比。

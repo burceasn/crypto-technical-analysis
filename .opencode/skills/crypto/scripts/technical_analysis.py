@@ -35,7 +35,7 @@ class TechnicalAnalysis:
                  inst_id: Optional[str] = None,
                  bar: str = '1D',
                  limit: int = 100,
-                 use_proxy: bool = True):
+                 use_proxy: bool = False):
         """
         初始化
         
@@ -80,7 +80,7 @@ class TechnicalAnalysis:
                     self.data[col] = pd.to_numeric(self.data[col], errors='coerce')
     
     @classmethod
-    def from_api(cls, inst_id: str, bar: str = '1D', limit: int = 100, use_proxy: bool = True):
+    def from_api(cls, inst_id: str, bar: str = '1D', limit: int = 100, use_proxy: bool = False):
         """
         类方法: 从API创建TechnicalAnalysis实例 (推荐方式)
         
@@ -96,7 +96,7 @@ class TechnicalAnalysis:
         return cls(inst_id=inst_id, bar=bar, limit=limit, use_proxy=use_proxy)
     
     @staticmethod
-    def fetch_kline_data(inst_id: str, bar: str = '1D', limit: int = 100, use_proxy: bool = True) -> Optional[pd.DataFrame]:
+    def fetch_kline_data(inst_id: str, bar: str = '1D', limit: int = 100, use_proxy: bool = False) -> Optional[pd.DataFrame]:
         """
         静态方法: 直接从API获取K线数据
         
@@ -112,7 +112,7 @@ class TechnicalAnalysis:
         return get_okx_candles(inst_id, bar=bar, limit=limit, use_proxy=use_proxy)
     
     @staticmethod
-    def fetch_funding_rate(inst_id: str, limit: int = 100, use_proxy: bool = True) -> Optional[pd.DataFrame]:
+    def fetch_funding_rate(inst_id: str, limit: int = 100, use_proxy: bool = False) -> Optional[pd.DataFrame]:
         """
         静态方法: 获取资金费率数据
         
@@ -127,7 +127,7 @@ class TechnicalAnalysis:
         return get_okx_funding_rate(inst_id, limit=limit, use_proxy=use_proxy)
     
     @staticmethod
-    def fetch_open_interest(inst_id: str, period: str = '1H', limit: int = 100, use_proxy: bool = True) -> Optional[pd.DataFrame]:
+    def fetch_open_interest(inst_id: str, period: str = '1H', limit: int = 100, use_proxy: bool = False) -> Optional[pd.DataFrame]:
         """
         静态方法: 获取持仓量数据
         
@@ -143,7 +143,7 @@ class TechnicalAnalysis:
         return get_okx_open_interest(inst_id, period=period, limit=limit, use_proxy=use_proxy)
     
     @staticmethod
-    def fetch_long_short_ratio(ccy: str, period: str = '1H', limit: int = 100, use_proxy: bool = True) -> Optional[pd.DataFrame]:
+    def fetch_long_short_ratio(ccy: str, period: str = '1H', limit: int = 100, use_proxy: bool = False) -> Optional[pd.DataFrame]:
         """
         静态方法: 获取多空比数据
         
@@ -159,7 +159,7 @@ class TechnicalAnalysis:
         return get_long_short_ratio(ccy, period=period, limit=limit, use_proxy=use_proxy)
     
     @staticmethod
-    def fetch_liquidation(inst_id: str, state: str = 'filled', limit: int = 100, use_proxy: bool = True) -> Optional[pd.DataFrame]:
+    def fetch_liquidation(inst_id: str, state: str = 'filled', limit: int = 100, use_proxy: bool = False) -> Optional[pd.DataFrame]:
         """
         静态方法: 获取爆仓数据
         
@@ -390,7 +390,7 @@ def analyze_all_assets(data_file: Optional[str] = None,
                        inst_ids: Optional[List[str]] = None,
                        bar: str = '1D',
                        limit: int = 100,
-                       use_proxy: bool = True):
+                       use_proxy: bool = False):
     """
     分析所有资产
     

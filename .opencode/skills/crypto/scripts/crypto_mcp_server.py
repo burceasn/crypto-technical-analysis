@@ -33,10 +33,20 @@ from crypto_data import (
     get_fear_greed_index
 )
 
+# 导入技术分析模块
+from technical_analysis import TechnicalAnalysis, _analyze_single_asset
+
 
 # ==============================================================================
 # MCP Protocol Implementation
 # ==============================================================================
+
+# ==============================================================================
+# K线数据缓存：key = (inst_id, bar)，value = List[Dict] (records格式)
+# 当 get_candles 被调用后自动填充，供后续分析工具复用，避免重复请求
+# ==============================================================================
+_candles_cache: dict = {}
+
 
 def send_response(response: dict) -> None:
     """发送 JSON-RPC 响应"""
@@ -238,6 +248,88 @@ def handle_tools_list(request_id: Any) -> dict:
                 },
                 "required": []
             }
+        },
+        {
+            "name": "get_analysis_summary",
+            "description": "获取交易对的技术分析摘要，包含：当前价格、MA5/MA20、RSI14、MACD_DIF、ADX、斐波那契回撤位、区间涨跌幅%。适合快速判断趋势方向和强度。",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "inst_id": {
+                        "type": "string",
+                        "description": "交易对，如 'BTC-USDT', 'ETH-USDT'"
+                    },
+                    "bar": {
+                        "type": "string",
+                        "description": "K线周期: '1m','5m','15m','30m','1H','4H','1D','1W'",
+                        "default": "1D"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "用于计算的K线数量，建议 ≥ 50",
+                        "default": 100
+                    }
+                },
+                "required": ["inst_id"]
+            }
+        },
+        {
+            "name": "get_all_indicators",
+            "description": "获取交易对完整技术指标序列，包含：MA5/10/20/50、EMA12/26、RSI6/14、MACD(DIF/DEA/柱)、KDJ(K/D/J)、DMI(+DI/-DI/ADX)、布林带(上/中/下轨/带宽)、ATR14、OBV、价格变化%(1/5/20周期)、成交量变化%。通过 last_n 控制返回行数避免数据过多。",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "inst_id": {
+                        "type": "string",
+                        "description": "交易对，如 'BTC-USDT', 'ETH-USDT'"
+                    },
+                    "bar": {
+                        "type": "string",
+                        "description": "K线周期: '1m','5m','15m','30m','1H','4H','1D','1W'",
+                        "default": "1D"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "获取的K线数量，最大100，建议 ≥ 50 保证指标准确",
+                        "default": 100
+                    },
+                    "last_n": {
+                        "type": "integer",
+                        "description": "只返回最新的 N 行结果，默认 10",
+                        "default": 10
+                    }
+                },
+                "required": ["inst_id"]
+            }
+        },
+        {
+            "name": "get_support_resistance",
+            "description": "获取交易对的支撑位列表、阻力位列表，以及斐波那契回撤关键价位(0/0.236/0.382/0.5/0.618/0.786/1.0)。适合判断买卖价格区间。",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "inst_id": {
+                        "type": "string",
+                        "description": "交易对，如 'BTC-USDT'"
+                    },
+                    "bar": {
+                        "type": "string",
+                        "description": "K线周期",
+                        "default": "1D"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "K线数量",
+                        "default": 100
+                    },
+                    "window": {
+                        "type": "integer",
+                        "description": "判断极值点的窗口大小，越大筛选越严格",
+                        "default": 5
+                    }
+                },
+                "required": ["inst_id"]
+            }
         }
     ]
     
@@ -248,6 +340,51 @@ def handle_tools_list(request_id: Any) -> dict:
     }
 
 
+# ==============================================================================
+# 数据清洗工具函数
+# ==============================================================================
+
+import math
+
+def _clean_value(v):
+    """将任意值转为 JSON 可序列化的 Python 原生类型，NaN/Inf 转 None"""
+    if v is None:
+        return None
+    # pandas Timestamp / datetime
+    if hasattr(v, 'isoformat'):
+        return v.isoformat()
+    # numpy bool
+    if hasattr(v, 'item'):
+        v = v.item()
+    if isinstance(v, float):
+        if math.isnan(v) or math.isinf(v):
+            return None
+        return round(v, 8)
+    if isinstance(v, (int, str, bool)):
+        return v
+    # 兜底：转字符串
+    return str(v)
+
+
+def _clean_record(record: dict) -> dict:
+    """清洗单行 dict"""
+    return {k: _clean_value(v) for k, v in record.items()}
+
+
+def _clean_df_to_records(df) -> list:
+    """DataFrame → list[dict]，完整清洗"""
+    return [_clean_record(row) for row in df.to_dict(orient="records")]
+
+
+def _clean_any(obj):
+    """递归清洗任意嵌套结构（dict/list/scalar）"""
+    if isinstance(obj, dict):
+        return {k: _clean_any(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_clean_any(i) for i in obj]
+    return _clean_value(obj)
+
+
 def handle_tool_call(request_id: Any, params: dict) -> dict:
     """执行工具调用"""
     tool_name = params.get("name")
@@ -255,11 +392,13 @@ def handle_tool_call(request_id: Any, params: dict) -> dict:
     
     try:
         if tool_name == "get_candles":
+            inst_id = arguments["inst_id"]
+            bar     = arguments.get("bar", "1H")
             df = get_okx_candles(
-                inst_id=arguments["inst_id"],
-                bar=arguments.get("bar", "1H"),
+                inst_id=inst_id,
+                bar=bar,
                 limit=arguments.get("limit", 100),
-                use_proxy=True
+                use_proxy=False
             )
             if df is not None:
                 # 转换为 JSON 友好格式
@@ -267,6 +406,8 @@ def handle_tool_call(request_id: Any, params: dict) -> dict:
                 # 将 datetime 转为字符串
                 for row in result:
                     row["datetime"] = str(row["datetime"])
+                # ---- 存入缓存，供后续分析工具复用 ----
+                _candles_cache[(inst_id, bar)] = result
                 content = json.dumps(result, indent=2)
             else:
                 content = "Error: Failed to fetch candle data"
@@ -275,7 +416,7 @@ def handle_tool_call(request_id: Any, params: dict) -> dict:
             df = get_okx_funding_rate(
                 inst_id=arguments["inst_id"],
                 limit=arguments.get("limit", 100),
-                use_proxy=True
+                use_proxy=False
             )
             if df is not None:
                 result = df.to_dict(orient="records")
@@ -290,7 +431,7 @@ def handle_tool_call(request_id: Any, params: dict) -> dict:
                 inst_id=arguments["inst_id"],
                 period=arguments.get("period", "1H"),
                 limit=arguments.get("limit", 100),
-                use_proxy=True
+                use_proxy=False
             )
             if df is not None:
                 result = df.to_dict(orient="records")
@@ -305,7 +446,7 @@ def handle_tool_call(request_id: Any, params: dict) -> dict:
                 ccy=arguments["ccy"],
                 period=arguments.get("period", "1H"),
                 limit=arguments.get("limit", 100),
-                use_proxy=True
+                use_proxy=False
             )
             if df is not None:
                 result = df.to_dict(orient="records")
@@ -320,7 +461,7 @@ def handle_tool_call(request_id: Any, params: dict) -> dict:
                 inst_id=arguments["inst_id"],
                 state=arguments.get("state", "filled"),
                 limit=arguments.get("limit", 100),
-                use_proxy=True
+                use_proxy=False
             )
             if df is not None:
                 result = df.to_dict(orient="records")
@@ -335,7 +476,7 @@ def handle_tool_call(request_id: Any, params: dict) -> dict:
                 inst_id=arguments["inst_id"],
                 period=arguments.get("period", "5m"),
                 limit=arguments.get("limit", 100),
-                use_proxy=True
+                use_proxy=False
             )
             if df is not None:
                 result = df.to_dict(orient="records")
@@ -349,7 +490,7 @@ def handle_tool_call(request_id: Any, params: dict) -> dict:
             df = get_option_open_interest_volume_ratio(
                 ccy=arguments["ccy"],
                 period=arguments.get("period", "8H"),
-                use_proxy=True
+                use_proxy=False
             )
             if df is not None:
                 result = df.to_dict(orient="records")
@@ -362,7 +503,7 @@ def handle_tool_call(request_id: Any, params: dict) -> dict:
         elif tool_name == "get_fear_greed_index":
             df = get_fear_greed_index(
                 days=arguments.get("days", 7),
-                use_proxy=True
+                use_proxy=False
             )
             if df is not None:
                 result = df.to_dict(orient="records")
@@ -370,6 +511,85 @@ def handle_tool_call(request_id: Any, params: dict) -> dict:
             else:
                 content = "Error: Failed to fetch fear and greed index data"
                 
+        elif tool_name == "get_analysis_summary":
+            inst_id = arguments["inst_id"]
+            bar     = arguments.get("bar", "1D")
+            limit   = int(arguments.get("limit", 100))
+
+            cached = _candles_cache.get((inst_id, bar))
+            if cached is not None:
+                ta = TechnicalAnalysis(kline_data=cached)
+                ta.inst_id = inst_id
+                ta.bar = bar
+            else:
+                ta = TechnicalAnalysis(inst_id=inst_id, bar=bar, limit=limit, use_proxy=False)
+            if ta.data.empty:  # type: ignore
+                content = f"Error: 无法获取 {inst_id} 的K线数据"
+            else:
+                result = _analyze_single_asset(ta, inst_id)
+                if result is None:
+                    content = "Error: 分析失败，数据不足"
+                else:
+                    content = json.dumps(_clean_any(result), indent=2, ensure_ascii=False)
+
+        elif tool_name == "get_all_indicators":
+            inst_id = arguments["inst_id"]
+            bar     = arguments.get("bar", "1D")
+            limit   = int(arguments.get("limit", 100))
+            last_n  = int(arguments.get("last_n", 10))
+
+            cached = _candles_cache.get((inst_id, bar))
+            if cached is not None:
+                ta = TechnicalAnalysis(kline_data=cached)
+                ta.inst_id = inst_id
+                ta.bar = bar
+            else:
+                ta = TechnicalAnalysis(inst_id=inst_id, bar=bar, limit=limit, use_proxy=False)
+            if ta.data.empty: # type: ignore
+                content = f"Error: 无法获取 {inst_id} 的K线数据"
+            else:
+                df = ta.get_all_indicators()
+                if last_n > 0:
+                    df = df.tail(last_n)
+                records = _clean_df_to_records(df)
+                content = json.dumps(records, indent=2, ensure_ascii=False)
+
+        elif tool_name == "get_support_resistance":
+            inst_id = arguments["inst_id"]
+            bar     = arguments.get("bar", "1D")
+            limit   = int(arguments.get("limit", 100))
+            window  = int(arguments.get("window", 5))
+
+            cached = _candles_cache.get((inst_id, bar))
+            if cached is not None:
+                ta = TechnicalAnalysis(kline_data=cached)
+                ta.inst_id = inst_id
+                ta.bar = bar
+            else:
+                ta = TechnicalAnalysis(inst_id=inst_id, bar=bar, limit=limit, use_proxy=False)
+            if ta.data.empty: # type: ignore
+                content = f"Error: 无法获取 {inst_id} 的K线数据"
+            else:
+                support, resistance = ta.find_support_resistance(window=window)
+                high_price  = float(ta.data['high'].max())  # type: ignore
+                low_price   = float(ta.data['low'].min())  # type: ignore
+                curr_price  = float(ta.data['close'].iloc[-1])  # type: ignore
+                fib         = ta.calculate_fibonacci_retracement(high_price, low_price)
+
+                result = {
+                    "inst_id": inst_id,
+                    "bar": bar,
+                    "current_price":     _clean_value(curr_price),
+                    "support_levels":    [_clean_value(v) for v in sorted(support,     reverse=True)],
+                    "resistance_levels": [_clean_value(v) for v in sorted(resistance,  reverse=True)],
+                    "fibonacci_retracement": {k: _clean_value(v) for k, v in fib.items()},
+                    "price_range": {
+                        "high": _clean_value(high_price),
+                        "low":  _clean_value(low_price)
+                    }
+                }
+                content = json.dumps(result, indent=2, ensure_ascii=False)
+
         else:
             content = f"Error: Unknown tool '{tool_name}'"
             

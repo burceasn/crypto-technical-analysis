@@ -136,7 +136,7 @@ Call via `skill_mcp(mcp_name="crypto", tool_name="...", arguments={...})`
 
 ### 8. get_fear_greed_index - Fear and Greed Index
 
-获取 alternative.me 的恐惧贪婪指数。免费开放，无需 API Key。
+获取 alternative.me 的恐惧贪婪指数。
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -459,7 +459,7 @@ if ls is not None:
 | "多空比" | Use fetch_long_short_ratio with CCY |
 | "精英持仓", "大户仓位" | Use get_top_trader_position_ratio with SWAP |
 | "期权比", "call/put" | Use get_option_oi_volume_ratio with CCY |
-| \"恐惧贪婪\", \"情绪指数\" | Use get_fear_greed_index (无需 API Key) |
+| \"恐惧贪婪\", \"情绪指数\" | Use get_fear_greed_index |
 
 ---
 

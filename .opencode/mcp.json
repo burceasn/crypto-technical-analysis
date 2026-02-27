@@ -6,6 +6,10 @@
       "env": {
         "PYTHONIOENCODING": "utf-8"
       }
+    },
+    "notion": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://mcp.notion.com/mcp"]
     }
   }
 }
